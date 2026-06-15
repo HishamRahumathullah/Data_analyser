@@ -1,0 +1,7 @@
+sqlglot
+streamlit
+langchain
+duckdb
+pandas
+plotly
+requests
