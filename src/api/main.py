@@ -8,6 +8,10 @@ Integrates:
 - Judge Agent (Mandatory quality control)
 - Cost Guardrails (Budget management)
 """
+
+import json
+import pandas as pd
+import numpy as np
 import asyncio
 import time
 import uuid
@@ -36,10 +40,25 @@ from src.connectors.feedback import FeedbackStore, QueryFeedback
 from src.insights.pipeline import InsightPipeline
 from src.insights.dashboard import DashboardBuilder, ExportPipeline
 from src.insights.judge import JudgeAgent
-from src.security.rbac import RBACManager, RowLevelSecurity, ColumnLevelSecurity, AuditLogger, UserContext, Role
-from src.async.orchestrator import ParallelInsightOrchestrator, StreamingResponseManager
+from src.security.rbac import (
+    RBACManager,
+    RowLevelSecurity,
+    ColumnLevelSecurity,
+    AuditLogger,
+    UserContext,
+    Role,
+)
+from src.async_tasks.orchestrator import (
+    ParallelInsightOrchestrator,
+    StreamingResponseManager,
+)
 from src.cache.semantic_cache import QueryCacheManager
-from src.resilience.circuit_breaker import ResilienceManager, resilient, CircuitOpenError, BulkheadFullError
+from src.resilience.circuit_breaker import (
+    ResilienceManager,
+    resilient,
+    CircuitOpenError,
+    BulkheadFullError,
+)
 from src.cost.estimator import CostGuardrail
 
 # Rate limiter
@@ -47,6 +66,23 @@ limiter = Limiter(key_func=get_remote_address)
 
 # Global state
 app_state: Dict[str, Any] = {}
+
+
+def clean_for_json(obj):
+    """Recursively convert numpy/pandas types to Python native types."""
+    if isinstance(obj, dict):
+        return {k: clean_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [clean_for_json(v) for v in obj]
+    elif isinstance(obj, np.integer):
+        return int(obj)
+    elif isinstance(obj, np.floating):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, pd.DataFrame):
+        return json.loads(obj.to_json(orient="records", default_handler=str))
+    return obj
 
 
 @asynccontextmanager
@@ -62,7 +98,13 @@ async def lifespan(app: FastAPI):
     rbac = RBACManager()
     # Create default users
     rbac.create_user("admin", "admin@company.com", Role.ADMIN)
-    rbac.create_user("analyst", "analyst@company.com", Role.ANALYST, department="Sales", region="North")
+    rbac.create_user(
+        "analyst",
+        "analyst@company.com",
+        Role.ANALYST,
+        department="Sales",
+        region="North",
+    )
     rbac.create_user("viewer", "viewer@company.com", Role.VIEWER, region="South")
 
     app_state["config"] = config
@@ -73,7 +115,9 @@ async def lifespan(app: FastAPI):
     app_state["planner"] = Planner(llm)
     app_state["coder"] = Coder(llm)
     app_state["sandbox"] = Sandbox(config.sandbox)
-    app_state["validator"] = SQLSafetyValidator(allowed_tables=set(db.get_table_names()))
+    app_state["validator"] = SQLSafetyValidator(
+        allowed_tables=set(db.get_table_names())
+    )
     app_state["result_validator"] = ResultValidator()
     app_state["feedback"] = FeedbackStore()
     app_state["insights"] = InsightPipeline(llm)
@@ -123,7 +167,12 @@ async def log_requests(request: Request, call_next):
     duration = (time.time() - start) * 1000
     logger.info(
         f"{request.method} {request.url.path} - {response.status_code} - {duration:.1f}ms",
-        extra={"path": request.url.path, "method": request.method, "status": response.status_code, "duration_ms": duration}
+        extra={
+            "path": request.url.path,
+            "method": request.method,
+            "status": response.status_code,
+            "duration_ms": duration,
+        },
     )
     return response
 
@@ -131,6 +180,7 @@ async def log_requests(request: Request, call_next):
 # ============================================================================
 # Health & Schema
 # ============================================================================
+
 
 @app.get("/health")
 async def health_check():
@@ -147,7 +197,7 @@ async def health_check():
             "semantic_layer": "active",
             "cache": cache.stats(),
             "resilience": resilience.get_all_stats(),
-        }
+        },
     }
 
 
@@ -171,6 +221,7 @@ async def get_schema(request: Request):
 # ============================================================================
 # Main Query Endpoint (with ALL P0/P1 features)
 # ============================================================================
+
 
 @app.post("/query")
 @limiter.limit("10/minute")
@@ -222,7 +273,9 @@ async def process_query(request: Request):
             }
 
         if not cost_check["allowed"]:
-            raise HTTPException(status_code=429, detail="Budget exceeded. Please try again tomorrow.")
+            raise HTTPException(
+                status_code=429, detail="Budget exceeded. Please try again tomorrow."
+            )
 
         # 2. Check Semantic Cache
         cache = app_state["cache"]
@@ -244,7 +297,10 @@ async def process_query(request: Request):
         tables = semantic.resolve_query(user_query).metrics
         for metric in tables:
             if not user.can_access_table(metric.sql_table):
-                raise HTTPException(status_code=403, detail=f"Access denied to table: {metric.sql_table}")
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Access denied to table: {metric.sql_table}",
+                )
 
         # 5. Plan
         plan = app_state["planner"].generate_plan(
@@ -267,8 +323,7 @@ async def process_query(request: Request):
         validation = app_state["validator"].validate(sql)
         if not validation["safe"]:
             raise HTTPException(
-                status_code=400,
-                detail=f"Unsafe SQL: {', '.join(validation['errors'])}"
+                status_code=400, detail=f"Unsafe SQL: {', '.join(validation['errors'])}"
             )
 
         # 8. Execute with circuit breaker
@@ -277,10 +332,14 @@ async def process_query(request: Request):
         bulkhead = resilience.get_bulkhead("database")
 
         if not circuit.can_execute():
-            raise HTTPException(status_code=503, detail="Database service temporarily unavailable")
+            raise HTTPException(
+                status_code=503, detail="Database service temporarily unavailable"
+            )
 
         if not bulkhead.acquire(timeout=30.0):
-            raise HTTPException(status_code=503, detail="Database overloaded, try again later")
+            raise HTTPException(
+                status_code=503, detail="Database overloaded, try again later"
+            )
 
         try:
             result = db.execute_query(sql)
@@ -312,12 +371,28 @@ async def process_query(request: Request):
             "cost_estimate": cost_check["estimate"],
         }
 
+        return clean_for_json(response_data)
+
         # 12. Insights (Parallel Async)
         if route == "ANALYSIS" or route == "VISUALIZATION":
             df = result_df
             date_col = next((c for c in df.columns if "date" in c.lower()), None)
-            metric_col = next((c for c in df.columns if c in [m.name for m in semantic_query.metrics]), None)
-            dimension_col = next((c for c in df.columns if c in [d.name for d in semantic_query.dimensions]), None)
+            metric_col = next(
+                (
+                    c
+                    for c in df.columns
+                    if c in [m.name for m in semantic_query.metrics]
+                ),
+                None,
+            )
+            dimension_col = next(
+                (
+                    c
+                    for c in df.columns
+                    if c in [d.name for d in semantic_query.dimensions]
+                ),
+                None,
+            )
 
             # Use parallel orchestrator
             orchestrator = app_state["parallel_orchestrator"]
@@ -342,8 +417,12 @@ async def process_query(request: Request):
             }
 
             if not judge_result["approved"]:
-                response_data["narrative"] = judge_result["corrected_narrative"] or response_data["narrative"]
-                response_data["warnings"] = (response_data.get("warnings") or "") + " [Reviewed by quality control]"
+                response_data["narrative"] = (
+                    judge_result["corrected_narrative"] or response_data["narrative"]
+                )
+                response_data["warnings"] = (
+                    response_data.get("warnings") or ""
+                ) + " [Reviewed by quality control]"
 
         # Visualization
         if route == "VISUALIZATION":
@@ -354,7 +433,9 @@ async def process_query(request: Request):
 
             if sandbox_result["success"]:
                 response_data["visualization"] = {
-                    "figure_json": sandbox_result["figure"].to_json() if sandbox_result["figure"] else None,
+                    "figure_json": sandbox_result["figure"].to_json()
+                    if sandbox_result["figure"]
+                    else None,
                 }
             else:
                 response_data["visualization_error"] = sandbox_result["error"]
@@ -372,7 +453,9 @@ async def process_query(request: Request):
         )
 
         # 16. Record Actual Cost
-        actual_cost = cost_check["estimate"]["cost_usd"] * 0.8  # Estimate is conservative
+        actual_cost = (
+            cost_check["estimate"]["cost_usd"] * 0.8
+        )  # Estimate is conservative
         cost_guardrail.record_actual_cost(user_id, actual_cost)
 
         # Log query
@@ -391,17 +474,22 @@ async def process_query(request: Request):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Query processing failed: {e}", extra={"query": user_query, "error_type": type(e).__name__})
+        logger.error(
+            f"Query processing failed: {e}",
+            extra={"query": user_query, "error_type": type(e).__name__},
+        )
 
         # Record failure feedback
-        app_state["feedback"].add_feedback(QueryFeedback(
-            query_id=query_id,
-            user_query=user_query,
-            sql="",
-            route="UNKNOWN",
-            success=False,
-            error_type=type(e).__name__,
-        ))
+        app_state["feedback"].add_feedback(
+            QueryFeedback(
+                query_id=query_id,
+                user_query=user_query,
+                sql="",
+                route="UNKNOWN",
+                success=False,
+                error_type=type(e).__name__,
+            )
+        )
 
         # Audit log failure
         if user:
@@ -420,6 +508,7 @@ async def process_query(request: Request):
 # ============================================================================
 # Streaming Endpoint (for real-time insights)
 # ============================================================================
+
 
 @app.post("/query/stream")
 @limiter.limit("5/minute")
@@ -454,6 +543,7 @@ async def process_query_stream(request: Request):
 # ============================================================================
 # Feedback Endpoints
 # ============================================================================
+
 
 @app.post("/feedback")
 @limiter.limit("30/minute")
@@ -494,6 +584,7 @@ async def get_feedback_stats(request: Request):
 # Dashboard Endpoints
 # ============================================================================
 
+
 @app.post("/dashboard/create")
 @limiter.limit("10/minute")
 async def create_dashboard(request: Request):
@@ -504,7 +595,9 @@ async def create_dashboard(request: Request):
     if not metric_name or not dimension_name:
         raise HTTPException(status_code=400, detail="metric and dimension are required")
 
-    dashboard = app_state["dashboard"].create_default_dashboard(metric_name, dimension_name)
+    dashboard = app_state["dashboard"].create_default_dashboard(
+        metric_name, dimension_name
+    )
 
     return {
         "title": dashboard.title,
@@ -517,13 +610,14 @@ async def create_dashboard(request: Request):
                 "dimension": c.dimension,
             }
             for c in dashboard.charts
-        ]
+        ],
     }
 
 
 # ============================================================================
 # Admin Endpoints
 # ============================================================================
+
 
 @app.get("/admin/resilience")
 @limiter.limit("10/minute")
