@@ -3,6 +3,7 @@
 Connects to the FastAPI backend for all data operations.
 Provides an interactive interface for all 3 capabilities.
 """
+
 import json
 import time
 import uuid
@@ -23,7 +24,8 @@ st.set_page_config(
 )
 
 # Custom CSS
-st.markdown("""
+st.markdown(
+    """
 <style>
     .main-header { font-size: 2.5rem; font-weight: bold; color: #1f77b4; }
     .sub-header { font-size: 1.2rem; color: #666; margin-bottom: 2rem; }
@@ -32,7 +34,9 @@ st.markdown("""
     .insight-medium { border-left: 4px solid #ffa421; padding-left: 1rem; }
     .insight-info { border-left: 4px solid #00cc96; padding-left: 1rem; }
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 
 def api_get(endpoint: str):
@@ -60,7 +64,10 @@ def api_post(endpoint: str, data: dict):
 # Sidebar
 with st.sidebar:
     st.markdown("<div class='main-header'>🤖 AI Analyst</div>", unsafe_allow_html=True)
-    st.markdown("<div class='sub-header'>Natural Language Data Analysis</div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div class='sub-header'>Natural Language Data Analysis</div>",
+        unsafe_allow_html=True,
+    )
 
     st.markdown("---")
 
@@ -68,7 +75,7 @@ with st.sidebar:
     audience = st.selectbox(
         "Audience",
         ["executive", "manager", "analyst", "engineer"],
-        help="Who is this analysis for?"
+        help="Who is this analysis for?",
     )
 
     st.markdown("---")
@@ -94,18 +101,47 @@ with st.sidebar:
         stats = api_get("/feedback/stats")
         if stats:
             st.metric("Total Queries", stats.get("total_queries", 0))
-            st.metric("Success Rate", f"{stats.get('success_rate', 0)*100:.1f}%")
+            st.metric("Success Rate", f"{stats.get('success_rate', 0) * 100:.1f}%")
+
+    st.markdown("---")
+
+    # Upload Data
+    st.markdown("### 📁 Upload Data")
+
+    uploaded = st.file_uploader(
+        "Upload CSV, Excel, Parquet, or JSON", type=["csv", "xlsx", "parquet", "json"]
+    )
+
+    if uploaded:
+        with st.spinner("Processing..."):
+            files = {"file": (uploaded.name, uploaded.getvalue())}
+            try:
+                response = requests.post(f"{API_BASE}/upload", files=files, timeout=60)
+                if response.status_code == 200:
+                    data = response.json()
+                    st.success(f"✅ Loaded {data['table_name']} ({data['rows']} rows)")
+                    # Refresh schema after upload
+                    st.rerun()
+                else:
+                    st.error(f"❌ Failed: {response.text}")
+            except Exception as e:
+                st.error(f"Error: {e}")
 
 
 # Main content
-st.markdown("<div class='main-header'>AI Data Analyst Agent</div>", unsafe_allow_html=True)
-st.markdown("<div class='sub-header'>Ask questions about your data in plain English</div>", unsafe_allow_html=True)
+st.markdown(
+    "<div class='main-header'>AI Data Analyst Agent</div>", unsafe_allow_html=True
+)
+st.markdown(
+    "<div class='sub-header'>Ask questions about your data in plain English</div>",
+    unsafe_allow_html=True,
+)
 
 # Query input
 user_query = st.text_input(
     "What would you like to know?",
     placeholder="e.g., Show me total revenue by region, or Why are North region sales declining?",
-    key="query_input"
+    key="query_input",
 )
 
 if user_query:
@@ -115,10 +151,13 @@ if user_query:
         start_time = time.time()
 
         # Call API
-        response = api_post("/query", {
-            "query": user_query,
-            "audience": audience,
-        })
+        response = api_post(
+            "/query",
+            {
+                "query": user_query,
+                "audience": audience,
+            },
+        )
 
         if not response:
             status.update(label="❌ Analysis Failed", state="error")
@@ -146,7 +185,7 @@ if user_query:
                     csv,
                     f"analysis_{query_id[:8]}.csv",
                     "text/csv",
-                    key=f"csv_{query_id}"
+                    key=f"csv_{query_id}",
                 )
 
         with col2:
@@ -183,7 +222,7 @@ if user_query:
                     f"<strong>{insight.get('title', '')}</strong><br/>"
                     f"{insight.get('description', '')}"
                     f"</div>",
-                    unsafe_allow_html=True
+                    unsafe_allow_html=True,
                 )
 
             # Narrative
@@ -198,39 +237,48 @@ if user_query:
 
         with feedback_col1:
             if st.button("👍 Good", key=f"good_{query_id}"):
-                api_post("/feedback", {
-                    "query_id": query_id,
-                    "user_query": user_query,
-                    "sql": response.get("sql", ""),
-                    "route": route,
-                    "success": True,
-                    "user_rating": 5,
-                })
+                api_post(
+                    "/feedback",
+                    {
+                        "query_id": query_id,
+                        "user_query": user_query,
+                        "sql": response.get("sql", ""),
+                        "route": route,
+                        "success": True,
+                        "user_rating": 5,
+                    },
+                )
                 st.success("Thanks for your feedback!")
 
         with feedback_col2:
             if st.button("👎 Needs Improvement", key=f"bad_{query_id}"):
-                api_post("/feedback", {
-                    "query_id": query_id,
-                    "user_query": user_query,
-                    "sql": response.get("sql", ""),
-                    "route": route,
-                    "success": True,
-                    "user_rating": 2,
-                })
+                api_post(
+                    "/feedback",
+                    {
+                        "query_id": query_id,
+                        "user_query": user_query,
+                        "sql": response.get("sql", ""),
+                        "route": route,
+                        "success": True,
+                        "user_rating": 2,
+                    },
+                )
                 st.info("Thanks! We'll use this to improve.")
 
         with feedback_col3:
             comment = st.text_input("Comment (optional)", key=f"comment_{query_id}")
             if comment and st.button("Submit", key=f"submit_comment_{query_id}"):
-                api_post("/feedback", {
-                    "query_id": query_id,
-                    "user_query": user_query,
-                    "sql": response.get("sql", ""),
-                    "route": route,
-                    "success": True,
-                    "user_comment": comment,
-                })
+                api_post(
+                    "/feedback",
+                    {
+                        "query_id": query_id,
+                        "user_query": user_query,
+                        "sql": response.get("sql", ""),
+                        "route": route,
+                        "success": True,
+                        "user_comment": comment,
+                    },
+                )
 
 
 # Dashboard builder section
@@ -244,14 +292,19 @@ with st.expander("Create Dashboard"):
         dimension_choice = st.selectbox("Dimension", schema_data.get("dimensions", []))
 
         if st.button("Create Dashboard"):
-            dashboard = api_post("/dashboard/create", {
-                "metric": metric_choice,
-                "dimension": dimension_choice,
-            })
+            dashboard = api_post(
+                "/dashboard/create",
+                {
+                    "metric": metric_choice,
+                    "dimension": dimension_choice,
+                },
+            )
             if dashboard:
                 st.success(f"Created: {dashboard['title']}")
                 for chart in dashboard.get("charts", []):
                     st.markdown(f"- **{chart['title']}** ({chart['type']})")
 
 st.markdown("---")
-st.caption("AI Data Analyst Agent v2.0 — Built with Semantic Layer + Multi-Agent Insights")
+st.caption(
+    "AI Data Analyst Agent v2.0 — Built with Semantic Layer + Multi-Agent Insights"
+)
