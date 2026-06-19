@@ -1,12 +1,5 @@
 """Pure Streamlit UI — launched by app.py entrypoint."""
 
-<<<<<<< HEAD:streamlit_app.py
-=======
-Connects to the FastAPI backend for all data operations.
-Provides an interactive interface for all 3 capabilities.
-"""
-
->>>>>>> 1b5b79365e1ad3722d4d15a7e1419b500db5b7b4:src/ui/app.py
 import json
 import uuid
 import streamlit as st
@@ -23,12 +16,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-<<<<<<< HEAD:streamlit_app.py
-=======
-# Custom CSS
->>>>>>> 1b5b79365e1ad3722d4d15a7e1419b500db5b7b4:src/ui/app.py
-st.markdown(
-    """
+st.markdown("""
 <style>
     .main-header { font-size: 2.5rem; font-weight: bold; color: #1f77b4; }
     .sub-header { font-size: 1.2rem; color: #666; margin-bottom: 2rem; }
@@ -37,9 +25,7 @@ st.markdown(
     .insight-medium { border-left: 4px solid #ffa421; padding-left: 1rem; }
     .insight-info { border-left: 4px solid #00cc96; padding-left: 1rem; }
 </style>
-""",
-    unsafe_allow_html=True,
-)
+""", unsafe_allow_html=True)
 
 
 def api_get(endpoint: str):
@@ -64,20 +50,13 @@ def api_post(endpoint: str, data: dict):
 
 with st.sidebar:
     st.markdown("<div class='main-header'>🤖 AI Analyst</div>", unsafe_allow_html=True)
-    st.markdown(
-        "<div class='sub-header'>Natural Language Data Analysis</div>",
-        unsafe_allow_html=True,
-    )
-<<<<<<< HEAD:streamlit_app.py
-=======
-
->>>>>>> 1b5b79365e1ad3722d4d15a7e1419b500db5b7b4:src/ui/app.py
+    st.markdown("<div class='sub-header'>Natural Language Data Analysis</div>", unsafe_allow_html=True)
     st.markdown("---")
 
     audience = st.selectbox(
         "Audience",
         ["executive", "manager", "analyst", "engineer"],
-        help="Who is this analysis for?",
+        help="Who is this analysis for?"
     )
 
     st.markdown("---")
@@ -102,29 +81,21 @@ with st.sidebar:
             st.metric("Success Rate", f"{stats.get('success_rate', 0) * 100:.1f}%")
 
     st.markdown("---")
-<<<<<<< HEAD:streamlit_app.py
-=======
-
-    # Upload Data
->>>>>>> 1b5b79365e1ad3722d4d15a7e1419b500db5b7b4:src/ui/app.py
     st.markdown("### 📁 Upload Data")
 
     uploaded = st.file_uploader(
-        "Upload CSV, Excel, Parquet, or JSON", type=["csv", "xlsx", "parquet", "json"]
+        "Upload CSV, Excel, Parquet, or JSON",
+        type=["csv", "xlsx", "parquet", "json"]
     )
 
     if uploaded:
         with st.spinner("Processing..."):
-            files = {"file": (uploaded.name, uploaded.getvalue())}
+            files = {"file": (uploaded.name, uploaded.getvalue(), "application/octet-stream")}
             try:
                 response = requests.post(f"{API_BASE}/upload", files=files, timeout=60)
                 if response.status_code == 200:
                     data = response.json()
                     st.success(f"✅ Loaded {data['table_name']} ({data['rows']} rows)")
-<<<<<<< HEAD:streamlit_app.py
-=======
-                    # Refresh schema after upload
->>>>>>> 1b5b79365e1ad3722d4d15a7e1419b500db5b7b4:src/ui/app.py
                     st.rerun()
                 else:
                     st.error(f"❌ Failed: {response.text}")
@@ -132,17 +103,8 @@ with st.sidebar:
                 st.error(f"Error: {e}")
 
 
-<<<<<<< HEAD:streamlit_app.py
-=======
-# Main content
->>>>>>> 1b5b79365e1ad3722d4d15a7e1419b500db5b7b4:src/ui/app.py
-st.markdown(
-    "<div class='main-header'>AI Data Analyst Agent</div>", unsafe_allow_html=True
-)
-st.markdown(
-    "<div class='sub-header'>Ask questions about your data in plain English</div>",
-    unsafe_allow_html=True,
-)
+st.markdown("<div class='main-header'>AI Data Analyst Agent</div>", unsafe_allow_html=True)
+st.markdown("<div class='sub-header'>Ask questions about your data in plain English</div>", unsafe_allow_html=True)
 
 user_query = st.text_input(
     "What would you like to know?",
@@ -154,12 +116,6 @@ if user_query:
     query_id = str(uuid.uuid4())
 
     with st.status("🔄 Analyzing...", expanded=True) as status:
-<<<<<<< HEAD:streamlit_app.py
-=======
-        start_time = time.time()
-
-        # Call API
->>>>>>> 1b5b79365e1ad3722d4d15a7e1419b500db5b7b4:src/ui/app.py
         response = api_post(
             "/query",
             {
@@ -243,14 +199,9 @@ if user_query:
                         "user_rating": 5,
                     },
                 )
-<<<<<<< HEAD:streamlit_app.py
                 st.success("Thanks!")
-        with fc2:
-=======
-                st.success("Thanks for your feedback!")
 
-        with feedback_col2:
->>>>>>> 1b5b79365e1ad3722d4d15a7e1419b500db5b7b4:src/ui/app.py
+        with fc2:
             if st.button("👎 Needs Improvement", key=f"bad_{query_id}"):
                 api_post(
                     "/feedback",
@@ -263,18 +214,11 @@ if user_query:
                         "user_rating": 2,
                     },
                 )
-<<<<<<< HEAD:streamlit_app.py
                 st.info("Thanks! We'll improve.")
+
         with fc3:
             comment = st.text_input("Comment", key=f"comment_{query_id}")
             if comment and st.button("Submit", key=f"submit_{query_id}"):
-=======
-                st.info("Thanks! We'll use this to improve.")
-
-        with feedback_col3:
-            comment = st.text_input("Comment (optional)", key=f"comment_{query_id}")
-            if comment and st.button("Submit", key=f"submit_comment_{query_id}"):
->>>>>>> 1b5b79365e1ad3722d4d15a7e1419b500db5b7b4:src/ui/app.py
                 api_post(
                     "/feedback",
                     {
