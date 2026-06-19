@@ -2,16 +2,24 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install dependencies
+# Install build dependencies (gcc needed for compiled Python packages)
+# Clean up in same layer to keep image small
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gcc && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy requirements first for better Docker layer caching
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy all code
+# Copy application code
 COPY . .
 
-# Expose ports
-EXPOSE 7860
-EXPOSE 8000
+# Create upload directory (needed for /upload endpoint)
+RUN mkdir -p data/uploads
 
-# Start both services
-CMD bash -c "uvicorn src.api.main:app --host 0.0.0.0 --port 8000 & streamlit run src/ui/app.py --server.port 7860 --server.address 0.0.0.0"
+# HF Spaces exposes this port by default
+EXPOSE 7860
+
+# Use entrypoint.py (handles both FastAPI + Streamlit or just FastAPI)
+CMD ["python", "entrypoint.py"]
