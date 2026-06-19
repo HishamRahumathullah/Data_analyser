@@ -631,7 +631,11 @@ def _sanitize_table_name(name: str) -> str:
 
 @app.post("/upload")
 @limiter.limit("10/minute")
+<<<<<<< HEAD
 async def upload_data(request: Request, file: UploadFile = File(...)):
+=======
+async def upload_data(file: UploadFile = File(...)):
+>>>>>>> 1b5b79365e1ad3722d4d15a7e1419b500db5b7b4
     """Upload CSV, Excel, Parquet, JSON and register in DuckDB."""
     allowed = {".csv", ".xlsx", ".parquet", ".json"}
     ext = Path(file.filename).suffix.lower()
@@ -665,12 +669,15 @@ async def upload_data(request: Request, file: UploadFile = File(...)):
     else:
         raise HTTPException(400, f"Upload handling for {ext} not yet implemented")
 
+<<<<<<< HEAD
     # Auto-register semantic layer objects from uploaded data
     df_preview = db._duckdb_conn.execute(f"SELECT * FROM {table} LIMIT 1000").fetchdf()
     semantic = app_state["semantic"]
     registration = semantic.auto_register_from_dataframe(df_preview, table)
     logger.info(f"Auto-registered semantic objects: {registration}")
 
+=======
+>>>>>>> 1b5b79365e1ad3722d4d15a7e1419b500db5b7b4
     db.invalidate_cache()
     rows = db._duckdb_conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
 
