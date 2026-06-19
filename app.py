@@ -6,6 +6,11 @@ import time
 import os
 import signal
 
+# Disable Streamlit CORS and XSRF protection for HF Spaces iframe
+os.environ['STREAMLIT_SERVER_ENABLE_CORS'] = 'false'
+os.environ['STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION'] = 'false'
+
+
 # Start FastAPI backend on internal port
 print("🚀 Starting FastAPI backend on port 8000...")
 fastapi = subprocess.Popen(
@@ -41,6 +46,10 @@ streamlit = subprocess.Popen(
         "0.0.0.0",
         "--server.headless",
         "true",
+        "--server.enableCORS",
+        "false",
+        "--server.enableXsrfProtection",
+        "false",
         "--browser.gatherUsageStats",
         "false",
     ]
