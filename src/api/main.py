@@ -95,6 +95,7 @@ def clean_for_json(obj):
 async def lifespan(app: FastAPI):
     """Initialize all components."""
     config = AppConfig.from_env()
+    os.makedirs("data/uploads", exist_ok=True)
 
     db = DBManager(config.db)
     llm = LLMClient(config.llm)
