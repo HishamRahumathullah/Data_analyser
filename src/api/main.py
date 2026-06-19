@@ -78,14 +78,16 @@ def clean_for_json(obj):
         return {k: clean_for_json(v) for k, v in obj.items()}
     elif isinstance(obj, list):
         return [clean_for_json(v) for v in obj]
-    elif isinstance(obj, np.integer):
+    elif isinstance(obj, (np.integer, np.int64, np.int32)):
         return int(obj)
-    elif isinstance(obj, np.floating):
+    elif isinstance(obj, (np.floating, np.float64, np.float32)):
         return float(obj)
     elif isinstance(obj, np.ndarray):
         return obj.tolist()
     elif isinstance(obj, pd.DataFrame):
         return json.loads(obj.to_json(orient="records", default_handler=str))
+    elif hasattr(obj, 'item'):  # numpy scalar
+        return obj.item()
     return obj
 
 
@@ -286,7 +288,7 @@ async def process_query(request: Request):
         cached = cache.get_cached_response(user_query, "DATA_QUERY")
         if cached:
             logger.info(f"Cache hit for query: {user_query[:50]}...")
-            return {**cached, "query_id": query_id, "cached": True}
+            return clean_for_json({**cached, "query_id": query_id, "cached": True})
 
         # 3. Route Query
         route = app_state["router"].route(user_query)
@@ -631,11 +633,7 @@ def _sanitize_table_name(name: str) -> str:
 
 @app.post("/upload")
 @limiter.limit("10/minute")
-<<<<<<< HEAD
 async def upload_data(request: Request, file: UploadFile = File(...)):
-=======
-async def upload_data(file: UploadFile = File(...)):
->>>>>>> 1b5b79365e1ad3722d4d15a7e1419b500db5b7b4
     """Upload CSV, Excel, Parquet, JSON and register in DuckDB."""
     allowed = {".csv", ".xlsx", ".parquet", ".json"}
     ext = Path(file.filename).suffix.lower()
@@ -669,15 +667,12 @@ async def upload_data(file: UploadFile = File(...)):
     else:
         raise HTTPException(400, f"Upload handling for {ext} not yet implemented")
 
-<<<<<<< HEAD
     # Auto-register semantic layer objects from uploaded data
     df_preview = db._duckdb_conn.execute(f"SELECT * FROM {table} LIMIT 1000").fetchdf()
     semantic = app_state["semantic"]
     registration = semantic.auto_register_from_dataframe(df_preview, table)
     logger.info(f"Auto-registered semantic objects: {registration}")
 
-=======
->>>>>>> 1b5b79365e1ad3722d4d15a7e1419b500db5b7b4
     db.invalidate_cache()
     rows = db._duckdb_conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
 
