@@ -10,15 +10,19 @@ Integrates:
 """
 
 import json
+import os
+import re
+import shutil
 import pandas as pd
 import numpy as np
 import asyncio
 import time
 import uuid
+from pathlib import Path
 from typing import Optional, Dict, Any, List
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Request, Depends
+from fastapi import FastAPI, HTTPException, Request, Depends, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -371,8 +375,6 @@ async def process_query(request: Request):
             "cost_estimate": cost_check["estimate"],
         }
 
-        return clean_for_json(response_data)
-
         # 12. Insights (Parallel Async)
         if route == "ANALYSIS" or route == "VISUALIZATION":
             df = result_df
@@ -469,7 +471,7 @@ async def process_query(request: Request):
             execution_time_ms=total_time,
         )
 
-        return response_data
+        return clean_for_json(response_data)
 
     except HTTPException:
         raise
@@ -612,6 +614,61 @@ async def create_dashboard(request: Request):
             for c in dashboard.charts
         ],
     }
+
+
+# ============================================================================
+# Upload Endpoint
+# ============================================================================
+
+
+def _sanitize_table_name(name: str) -> str:
+    """Sanitize table name to prevent SQL injection."""
+    sanitized = re.sub(r"[^a-zA-Z0-9_]", "", name)
+    if not sanitized or sanitized[0].isdigit():
+        sanitized = "t_" + sanitized
+    return sanitized.lower()
+
+
+@app.post("/upload")
+@limiter.limit("10/minute")
+async def upload_data(file: UploadFile = File(...)):
+    """Upload CSV, Excel, Parquet, JSON and register in DuckDB."""
+    allowed = {".csv", ".xlsx", ".parquet", ".json"}
+    ext = Path(file.filename).suffix.lower()
+
+    if ext not in allowed:
+        raise HTTPException(400, f"Unsupported format: {ext}")
+
+    os.makedirs("data/uploads", exist_ok=True)
+    path = f"data/uploads/{file.filename}"
+
+    with open(path, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+
+    db = app_state["db"]
+    table = _sanitize_table_name(Path(file.filename).stem)
+
+    if ext == ".csv":
+        db._duckdb_conn.execute(
+            f"CREATE OR REPLACE TABLE {table} AS SELECT * FROM read_csv_auto('{path}')"
+        )
+    elif ext == ".parquet":
+        db._duckdb_conn.execute(
+            f"CREATE OR REPLACE TABLE {table} AS SELECT * FROM read_parquet('{path}')"
+        )
+    elif ext in [".xlsx", ".xls"]:
+        df = pd.read_excel(path)
+        db._duckdb_conn.execute(f"CREATE OR REPLACE TABLE {table} AS SELECT * FROM df")
+    elif ext == ".json":
+        df = pd.read_json(path)
+        db._duckdb_conn.execute(f"CREATE OR REPLACE TABLE {table} AS SELECT * FROM df")
+    else:
+        raise HTTPException(400, f"Upload handling for {ext} not yet implemented")
+
+    db.invalidate_cache()
+    rows = db._duckdb_conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+
+    return {"status": "success", "table_name": table, "rows": rows}
 
 
 # ============================================================================
