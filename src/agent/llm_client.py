@@ -79,6 +79,8 @@ class LLMClient:
                 response = self._vllm_chat(messages)
             elif self.config.provider == "openai":
                 response = self._openai_chat(messages)
+            elif self.config.provider == "groq":
+                response = self._groq_chat(messages)
             else:
                 raise LLMError(f"Unknown provider: {self.config.provider}")
 
@@ -161,6 +163,23 @@ class LLMClient:
             raise LLMError(f"Invalid OpenAI response format: {data}")
 
         return data["choices"][0]["message"]["content"]
+
+    def _groq_chat(self, messages: List[Dict[str, str]]) -> str:
+        """Call Groq API (OpenAI-compatible)."""
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        payload = {
+            "model": self.config.model,  # "llama-3.3-70b-versatile"
+            "messages": messages,
+            "temperature": self.config.temperature,
+            "max_tokens": 4096,
+        }
+        headers = {
+            "Authorization": f"Bearer {self.config.api_key}",
+            "Content-Type": "application/json",
+        }
+        response = requests.post(url, json=payload, headers=headers, timeout=30)
+        response.raise_for_status()
+        return response.json()["choices"][0]["message"]["content"]
 
     def _mock_response(self, messages: List[Dict[str, str]]) -> str:
         """Smart mock that uses query context for better responses."""
