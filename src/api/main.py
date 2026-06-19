@@ -633,7 +633,6 @@ def _sanitize_table_name(name: str) -> str:
 
 
 @app.post("/upload")
-@limiter.limit("100/minute")
 async def upload_data(request: Request, file: UploadFile = File(...)):
     """Upload CSV, Excel, Parquet, JSON and register in DuckDB."""
     allowed = {".csv", ".xlsx", ".parquet", ".json"}
